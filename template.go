@@ -5,22 +5,24 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"text/template"
 )
 
-var envMapCache map[string]string
-
-func envMap() map[string]string {
-	if envMapCache != nil {
-		return envMapCache
-	}
-	envMapCache = make(map[string]string)
+func buildEnvMap() map[string]string {
+	env := make(map[string]string)
 	for _, kvp := range os.Environ() {
 		kvParts := strings.SplitN(kvp, "=", 2)
-		envMapCache[kvParts[0]] = kvParts[1]
+		env[kvParts[0]] = kvParts[1]
 	}
-	return envMapCache
+	return env
 }
+
+// envMap returns the process environment as a template context. Computed
+// once, synchronized: migrations are prefetched concurrently and each
+// applyEnvironmentTemplate call executes its template on a goroutine, so an
+// unsynchronized lazy cache is a concurrent map write.
+var envMap = sync.OnceValue(buildEnvMap)
 
 func applyEnvironmentTemplate(body io.ReadCloser) (io.ReadCloser, error) {
 	bodyBytes, err := io.ReadAll(body)
